@@ -33,7 +33,7 @@ public:
     return *this;
   }
 
-  [[nodiscard]] int operator*() const { return fd_; }
+  [[nodiscard]] int operator*() const noexcept { return fd_; }
 
 private:
   static constexpr int INVALID = -1;
@@ -42,7 +42,7 @@ private:
 
 namespace infix {
 
-const struct ToFdTag {} to_fd;
+const struct ToFdTag {} ToFd;
 
 auto operator|(auto fd, ToFdTag _) {
   return FileDescriptor{static_cast<int>(fd)};

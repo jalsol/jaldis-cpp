@@ -25,8 +25,8 @@ public:
     int backlog = SOMAXCONN;
   };
 
-  void setup(const Config &config);
-  void run();
+  void Setup(const Config &config);
+  void Run();
 
 private:
   static constexpr std::uint16_t DEFAULT_PORT = 8080;
@@ -35,4 +35,7 @@ private:
   FileDescriptor server_fd_;
   FileDescriptor epoll_fd_;
   std::array<epoll_event, MAX_EVENTS> event_buffer_{};
+
+  void AcceptNewConnections();
+  void RegisterToEpoll(int fd, std::uint32_t events);
 };

@@ -14,7 +14,7 @@ struct ErrorChecker {
   int error_value;
 };
 
-ErrorChecker throw_if_errno(std::string msg, int error_value = -1) {
+ErrorChecker ThrowIfErrno(std::string msg, int error_value = -1) {
   return {.msg = std::move(msg), .error_value = error_value};
 }
 
