@@ -47,11 +47,12 @@ void Server::Run() {
     for (auto i = 0; i < event_count; ++i) {
       const auto& event = event_buffer_[i];
 
+      // TODO: log events
+
       if (event.data.fd == *server_fd_) {
         AcceptNewConnections();
       } else {
-        // Handle client socket events (read/write)
-        // TODO: Implement client event handling
+        HandleClientRequest(event.data.fd);
       }
     }
   }
@@ -76,6 +77,56 @@ void Server::AcceptNewConnections() {
 
     RegisterToEpoll(client_fd);
   }
+}
+
+void Server::HandleClientRequest(int client_fd) {
+  constexpr std::size_t BUFFER_SIZE = 4096;
+  std::array<char, BUFFER_SIZE> buffer{};
+
+  while (true) {
+    const auto bytes_read = read(client_fd, buffer.data(), buffer.size());
+
+    if (bytes_read == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        break;
+      }
+      CloseClient(client_fd);
+      return;
+    }
+
+    if (bytes_read == 0) {
+      CloseClient(client_fd);
+      return;
+    }
+
+    if (!EchoData(client_fd,
+                  std::string_view{buffer.data(),
+                                   static_cast<std::size_t>(bytes_read)})) {
+      CloseClient(client_fd);
+      return;
+    }
+  }
+}
+
+void Server::CloseClient(int client_fd) {
+  epoll_ctl(*epoll_fd_, EPOLL_CTL_DEL, client_fd, nullptr);
+  close(client_fd);
+}
+
+bool Server::EchoData(int client_fd, std::string_view data) {
+  std::size_t total_written = 0;
+  while (total_written < data.size()) {
+    const auto bytes_written = write(client_fd, data.data() + total_written,
+                                     data.size() - total_written);
+    if (bytes_written == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        continue;
+      }
+      return false;
+    }
+    total_written += bytes_written;
+  }
+  return true;
 }
 
 void Server::RegisterToEpoll(int fd) {

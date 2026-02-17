@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 #include <arpa/inet.h>
 #include <sys/epoll.h>
@@ -37,5 +38,8 @@ private:
   std::array<epoll_event, MAX_EVENTS> event_buffer_{};
 
   void AcceptNewConnections();
+  void HandleClientRequest(int client_fd);
   void RegisterToEpoll(int fd);
+  void CloseClient(int client_fd);
+  static bool EchoData(int client_fd, std::string_view data);
 };
