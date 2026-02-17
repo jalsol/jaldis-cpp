@@ -36,7 +36,7 @@ void Server::Setup(const Config &config) {
     | ThrowIfErrno("Server::epoll_fd_")
     | ToFdGuard;
 
-  RegisterToEpoll(*server_fd_, EPOLLIN | EPOLLET);
+  RegisterToEpoll(*server_fd_);
 }
 
 void Server::Run() {
@@ -74,11 +74,11 @@ void Server::AcceptNewConnections() {
       }
     }
 
-    RegisterToEpoll(client_fd, EPOLLIN | EPOLLET);
+    RegisterToEpoll(client_fd);
   }
 }
 
-void Server::RegisterToEpoll(int fd, std::uint32_t events) {
+void Server::RegisterToEpoll(int fd) {
   const auto flags = fcntl(fd, F_GETFL, 0)
     | ThrowIfErrno("Server fcntl GETFL");
 
@@ -86,7 +86,7 @@ void Server::RegisterToEpoll(int fd, std::uint32_t events) {
     | ThrowIfErrno("Server fcntl SETFL");
 
   epoll_event event = {
-    .events = events,
+    .events = EPOLLIN | EPOLLET,
     .data = {.fd = fd},
   };
 

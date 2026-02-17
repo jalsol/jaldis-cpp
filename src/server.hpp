@@ -37,5 +37,5 @@ private:
   std::array<epoll_event, MAX_EVENTS> event_buffer_{};
 
   void AcceptNewConnections();
-  void RegisterToEpoll(int fd, std::uint32_t events);
+  void RegisterToEpoll(int fd);
 };
