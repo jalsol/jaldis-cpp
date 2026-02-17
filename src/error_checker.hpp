@@ -4,10 +4,10 @@
 #include <system_error>
 
 // Example use case:
-// FileDescriptor fd = socket(...)
-//                   | throw_if_errno("msg1")
-//                   | throw_if_errno("msg2", 0)
-//                   | to_fd
+// FdGuard fd = socket(...)
+//            | ThrowIfErrno("msg1")
+//            | ThrowIfErrno("msg2", 0)
+//            | ToFdGuard
 
 struct ErrorChecker {
   std::string msg;

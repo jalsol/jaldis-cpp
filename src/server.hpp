@@ -1,6 +1,6 @@
 #pragma once
 
-#include "file_descriptor.hpp"
+#include "fd_guard.hpp"
 
 #include <array>
 #include <cstdint>
@@ -32,8 +32,8 @@ private:
   static constexpr std::uint16_t DEFAULT_PORT = 8080;
   static constexpr std::size_t MAX_EVENTS = 1024;
 
-  FileDescriptor server_fd_;
-  FileDescriptor epoll_fd_;
+  FdGuard server_fd_;
+  FdGuard epoll_fd_;
   std::array<epoll_event, MAX_EVENTS> event_buffer_{};
 
   void AcceptNewConnections();

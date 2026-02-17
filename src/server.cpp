@@ -12,7 +12,7 @@ void Server::Setup(const Config &config) {
   {
     server_fd_ = socket(AF_INET, SOCK_STREAM, 0)
       | ThrowIfErrno("Server::server_fd_")
-      | ToFd;
+      | ToFdGuard;
 
     const int opt = 1;
     setsockopt(*server_fd_, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))
@@ -34,7 +34,7 @@ void Server::Setup(const Config &config) {
 
   epoll_fd_ = epoll_create1(0)
     | ThrowIfErrno("Server::epoll_fd_")
-    | ToFd;
+    | ToFdGuard;
 
   RegisterToEpoll(*server_fd_, EPOLLIN | EPOLLET);
 }
