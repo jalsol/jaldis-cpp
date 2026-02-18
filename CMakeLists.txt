@@ -26,6 +26,7 @@ add_executable(jaldis
 add_executable(resp_tests
   src/resp/parser_tests.cpp
   src/resp/handler_tests.cpp
+  src/resp/serializer_tests.cpp
   src/resp/parser.cpp
   src/resp/handler.cpp
 )
