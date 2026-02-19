@@ -2,15 +2,17 @@
 
 #include "fd_guard.hpp"
 #include "resp/handler.hpp"
-#include "resp/serializer.hpp"
 #include "storage.hpp"
 
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <memory_resource>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <vector>
 
 #include <arpa/inet.h>
 #include <sys/epoll.h>
@@ -45,7 +47,6 @@ private:
     std::pmr::monotonic_buffer_resource arena{arena_buf.data(),
                                               arena_buf.size()};
     resp::RespHandler handler{&arena};
-    resp::Serializer serializer{&arena};
   };
 
   FdGuard server_fd_;
@@ -59,4 +60,14 @@ private:
   void RegisterToEpoll(int fd);
   void CloseClient(int client_fd);
   static bool WriteAll(int client_fd, std::string_view data);
+
+  // Pipeline phases (split for future multithreading)
+  static void ParseInput(ClientState &client, std::string_view input,
+                         std::pmr::vector<resp::Type> &parsed,
+                         bool &can_release);
+  void ExecuteCommands(std::span<const resp::Type> parsed,
+                       std::pmr::vector<resp::Type> &replies,
+                       std::pmr::memory_resource *arena);
+  static bool SerializeAndFlush(int client_fd, ClientState &client,
+                                std::span<const resp::Type> replies);
 };
