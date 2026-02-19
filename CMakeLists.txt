@@ -19,6 +19,7 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(jaldis
   src/main.cpp
   src/server.cpp
+  src/storage.cpp
   src/resp/parser.cpp
   src/resp/handler.cpp
 )
@@ -31,4 +32,16 @@ add_executable(resp_tests
   src/resp/handler.cpp
 )
 
+add_executable(storage_tests
+  src/storage_tests.cpp
+  src/storage.cpp
+)
+
+add_executable(command_tests
+  src/command_handler_tests.cpp
+  src/storage.cpp
+)
+
 target_link_libraries(resp_tests PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(storage_tests PRIVATE Catch2::Catch2WithMain)
+target_link_libraries(command_tests PRIVATE Catch2::Catch2WithMain)
