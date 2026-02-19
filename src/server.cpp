@@ -3,9 +3,6 @@
 #include "commands.hpp"
 #include "error_checker.hpp"
 
-#include <algorithm>
-#include <cctype>
-
 #include <fcntl.h>
 #include <sys/socket.h>
 
@@ -111,25 +108,27 @@ void Server::HandleClientRequest(int client_fd) {
     auto input =
       std::string_view{buffer.data(), static_cast<std::size_t>(bytes_read)};
 
+    // Batch all responses from this read into a single write
+    std::pmr::string write_buf{&client.arena};
+    bool can_release = true;
+
     while (!input.empty()) {
       auto result = client.handler.Feed(input);
       input.remove_prefix(result.consumed);
 
       if (result.status == resp::ParseStatus::Cancelled) {
-        // Reset parser on protocol error
         client.handler.Reset();
-        client.arena.release();
         break;
       }
 
       if (result.status == resp::ParseStatus::NeedMore) {
+        can_release = false;
         break;
       }
 
       // ParseStatus::Done — we have a complete RESP value
       if (!result.value) {
         client.handler.Reset();
-        client.arena.release();
         continue;
       }
 
@@ -139,12 +138,8 @@ void Server::HandleClientRequest(int client_fd) {
         auto err = resp::Error{
           std::pmr::string{"ERR invalid command format", &client.arena}};
         auto response = client.serializer.Serialize(err);
-        if (!WriteAll(client_fd, response)) {
-          CloseClient(client_fd);
-          return;
-        }
+        write_buf.append(response);
         client.handler.Reset();
-        client.arena.release();
         continue;
       }
 
@@ -154,33 +149,32 @@ void Server::HandleClientRequest(int client_fd) {
         auto err = resp::Error{std::pmr::string{
           "ERR command name must be a bulk string", &client.arena}};
         auto response = client.serializer.Serialize(err);
-        if (!WriteAll(client_fd, response)) {
-          CloseClient(client_fd);
-          return;
-        }
+        write_buf.append(response);
         client.handler.Reset();
-        client.arena.release();
         continue;
       }
 
-      // Uppercase the command name
-      std::string cmd_name{name_bs->value};
-      std::ranges::transform(cmd_name, cmd_name.begin(),
-                             [](unsigned char c) { return std::toupper(c); });
-
-      // Dispatch
+      // Dispatch (commands must be uppercase)
       std::span<const resp::Type> args{arr->value.data() + 1,
                                        arr->value.size() - 1};
-      auto reply = COMMANDS.Dispatch(cmd_name, args, store_, &client.arena);
+      auto reply =
+        COMMANDS.Dispatch(name_bs->value, args, store_, &client.arena);
 
       auto response = client.serializer.Serialize(reply);
-      if (!WriteAll(client_fd, response)) {
+      write_buf.append(response);
+      client.handler.Reset();
+    }
+
+    // Flush all accumulated responses in a single write
+    if (!write_buf.empty()) {
+      if (!WriteAll(client_fd, write_buf)) {
         CloseClient(client_fd);
         return;
       }
+    }
 
-      // Reset for next command (arena is monotonic — release reclaims all)
-      client.handler.Reset();
+    // Release arena only when no partial parse is in progress
+    if (can_release) {
       client.arena.release();
     }
   }
