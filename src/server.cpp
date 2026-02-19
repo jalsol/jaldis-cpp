@@ -84,7 +84,7 @@ void Server::AcceptNewConnections() {
 void Server::HandleClientRequest(int client_fd) {
   std::array<char, READ_BUFFER_SIZE> buffer{};
   auto it = clients_.find(client_fd);
-  if (it == clients_.end()) {
+  if (it == clients_.end()) [[unlikely]] {
     CloseClient(client_fd);
     return;
   }
@@ -101,7 +101,7 @@ void Server::HandleClientRequest(int client_fd) {
       return;
     }
 
-    if (bytes_read == 0) {
+    if (bytes_read == 0) [[unlikely]] {
       CloseClient(client_fd);
       return;
     }
@@ -119,7 +119,7 @@ void Server::HandleClientRequest(int client_fd) {
     ExecuteCommands(parsed, replies, &client.arena);
 
     // Phase 3: Serialize and write responses (IO-only)
-    if (!SerializeAndFlush(client_fd, client, replies)) {
+    if (!SerializeAndFlush(client_fd, client, replies)) [[unlikely]] {
       CloseClient(client_fd);
       return;
     }
@@ -137,7 +137,7 @@ void Server::ParseInput(ClientState &client, std::string_view input,
     auto result = client.handler.Feed(input);
     input.remove_prefix(result.consumed);
 
-    if (result.status == resp::ParseStatus::Cancelled) {
+    if (result.status == resp::ParseStatus::Cancelled) [[unlikely]] {
       client.handler.Reset();
       break;
     }
@@ -168,14 +168,14 @@ void Server::ExecuteCommands(std::span<const resp::Type> parsed,
 
   for (const auto &value : parsed) {
     const auto *arr = std::get_if<resp::Array>(&value);
-    if (!arr || arr->value.empty()) {
+    if (!arr || arr->value.empty()) [[unlikely]] {
       replies.emplace_back(
         resp::Error{std::pmr::string{"ERR invalid command format", arena}});
       continue;
     }
 
     const auto *name_bs = std::get_if<resp::BulkString>(&arr->value[0]);
-    if (!name_bs) {
+    if (!name_bs) [[unlikely]] {
       replies.emplace_back(resp::Error{
         std::pmr::string{"ERR command name must be a bulk string", arena}});
       continue;
