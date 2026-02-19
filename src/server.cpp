@@ -1,6 +1,10 @@
 #include "server.hpp"
 
+#include "commands.hpp"
 #include "error_checker.hpp"
+
+#include <algorithm>
+#include <cctype>
 
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -41,13 +45,12 @@ void Server::Setup(const Config &config) {
 
 void Server::Run() {
   while (true) {
-    const auto event_count = epoll_wait(*epoll_fd_, event_buffer_.data(), MAX_EVENTS, -1)
-      | ThrowIfErrno("Server epoll_wait");
+    const auto event_count =
+      epoll_wait(*epoll_fd_, event_buffer_.data(), MAX_EVENTS, -1)
+        | ThrowIfErrno("Server epoll_wait");
 
     for (auto i = 0; i < event_count; ++i) {
-      const auto& event = event_buffer_[i];
-
-      // TODO: log events
+      const auto &event = event_buffer_[i];
 
       if (event.data.fd == *server_fd_) {
         AcceptNewConnections();
@@ -75,13 +78,19 @@ void Server::AcceptNewConnections() {
       }
     }
 
+    clients_.emplace(client_fd, std::make_unique<ClientState>());
     RegisterToEpoll(client_fd);
   }
 }
 
 void Server::HandleClientRequest(int client_fd) {
-  constexpr std::size_t BUFFER_SIZE = 4096;
-  std::array<char, BUFFER_SIZE> buffer{};
+  std::array<char, READ_BUFFER_SIZE> buffer{};
+  auto it = clients_.find(client_fd);
+  if (it == clients_.end()) {
+    CloseClient(client_fd);
+    return;
+  }
+  auto &client = *it->second;
 
   while (true) {
     const auto bytes_read = read(client_fd, buffer.data(), buffer.size());
@@ -99,11 +108,80 @@ void Server::HandleClientRequest(int client_fd) {
       return;
     }
 
-    if (!EchoData(client_fd,
-                  std::string_view{buffer.data(),
-                                   static_cast<std::size_t>(bytes_read)})) {
-      CloseClient(client_fd);
-      return;
+    auto input =
+      std::string_view{buffer.data(), static_cast<std::size_t>(bytes_read)};
+
+    while (!input.empty()) {
+      auto result = client.handler.Feed(input);
+      input.remove_prefix(result.consumed);
+
+      if (result.status == resp::ParseStatus::Cancelled) {
+        // Reset parser on protocol error
+        client.handler.Reset();
+        client.arena.release();
+        break;
+      }
+
+      if (result.status == resp::ParseStatus::NeedMore) {
+        break;
+      }
+
+      // ParseStatus::Done — we have a complete RESP value
+      if (!result.value) {
+        client.handler.Reset();
+        client.arena.release();
+        continue;
+      }
+
+      // Commands are RESP arrays: ["COMMAND", arg1, arg2, ...]
+      auto *arr = std::get_if<resp::Array>(&*result.value);
+      if (!arr || arr->value.empty()) {
+        auto err = resp::Error{
+          std::pmr::string{"ERR invalid command format", &client.arena}};
+        auto response = client.serializer.Serialize(err);
+        if (!WriteAll(client_fd, response)) {
+          CloseClient(client_fd);
+          return;
+        }
+        client.handler.Reset();
+        client.arena.release();
+        continue;
+      }
+
+      // Extract command name
+      auto *name_bs = std::get_if<resp::BulkString>(&arr->value[0]);
+      if (!name_bs) {
+        auto err = resp::Error{std::pmr::string{
+          "ERR command name must be a bulk string", &client.arena}};
+        auto response = client.serializer.Serialize(err);
+        if (!WriteAll(client_fd, response)) {
+          CloseClient(client_fd);
+          return;
+        }
+        client.handler.Reset();
+        client.arena.release();
+        continue;
+      }
+
+      // Uppercase the command name
+      std::string cmd_name{name_bs->value};
+      std::ranges::transform(cmd_name, cmd_name.begin(),
+                             [](unsigned char c) { return std::toupper(c); });
+
+      // Dispatch
+      std::span<const resp::Type> args{arr->value.data() + 1,
+                                       arr->value.size() - 1};
+      auto reply = COMMANDS.Dispatch(cmd_name, args, store_, &client.arena);
+
+      auto response = client.serializer.Serialize(reply);
+      if (!WriteAll(client_fd, response)) {
+        CloseClient(client_fd);
+        return;
+      }
+
+      // Reset for next command (arena is monotonic — release reclaims all)
+      client.handler.Reset();
+      client.arena.release();
     }
   }
 }
@@ -111,9 +189,10 @@ void Server::HandleClientRequest(int client_fd) {
 void Server::CloseClient(int client_fd) {
   epoll_ctl(*epoll_fd_, EPOLL_CTL_DEL, client_fd, nullptr);
   close(client_fd);
+  clients_.erase(client_fd);
 }
 
-bool Server::EchoData(int client_fd, std::string_view data) {
+bool Server::WriteAll(int client_fd, std::string_view data) {
   std::size_t total_written = 0;
   while (total_written < data.size()) {
     const auto bytes_written = write(client_fd, data.data() + total_written,

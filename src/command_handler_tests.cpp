@@ -28,6 +28,8 @@ const std::pmr::vector<Type> &asArray(const Type &t) {
 
 bool isError(const Type &t) { return std::holds_alternative<Error>(t); }
 
+bool isNull(const Type &t) { return std::holds_alternative<Null>(t); }
+
 Type dispatch(Storage &store, std::initializer_list<Type> args_list,
               std::pmr::memory_resource *arena) {
   std::vector<Type> all(args_list);
@@ -77,7 +79,7 @@ TEST_CASE("SET and GET commands", "[commands]") {
 
   SECTION("GET missing key returns nil") {
     auto result = dispatch(store, {bulkStr("GET"), bulkStr("missing")}, &arena);
-    REQUIRE(asBulk(result) == "(nil)");
+    REQUIRE(isNull(result));
   }
 
   SECTION("SET overwrites") {
@@ -107,8 +109,7 @@ TEST_CASE("DEL command", "[commands]") {
     dispatch(store, {bulkStr("SET"), bulkStr("key"), bulkStr("val")}, &arena);
     auto result = dispatch(store, {bulkStr("DEL"), bulkStr("key")}, &arena);
     REQUIRE(asInt(result) == 1);
-    REQUIRE(asBulk(dispatch(store, {bulkStr("GET"), bulkStr("key")}, &arena)) ==
-            "(nil)");
+    REQUIRE(isNull(dispatch(store, {bulkStr("GET"), bulkStr("key")}, &arena)));
   }
 
   SECTION("Delete missing key returns 0") {
@@ -133,14 +134,14 @@ TEST_CASE("KEYS command", "[commands]") {
   Storage store;
 
   SECTION("Empty store") {
-    auto result = dispatch(store, {bulkStr("KEYS")}, &arena);
+    auto result = dispatch(store, {bulkStr("KEYS"), bulkStr("*")}, &arena);
     REQUIRE(asArray(result).empty());
   }
 
   SECTION("Returns all keys") {
     dispatch(store, {bulkStr("SET"), bulkStr("a"), bulkStr("1")}, &arena);
     dispatch(store, {bulkStr("SET"), bulkStr("b"), bulkStr("2")}, &arena);
-    auto result = dispatch(store, {bulkStr("KEYS")}, &arena);
+    auto result = dispatch(store, {bulkStr("KEYS"), bulkStr("*")}, &arena);
     REQUIRE(asArray(result).size() == 2);
   }
 }
@@ -154,7 +155,8 @@ TEST_CASE("FLUSHDB command", "[commands]") {
   dispatch(store, {bulkStr("SET"), bulkStr("b"), bulkStr("2")}, &arena);
   auto result = dispatch(store, {bulkStr("FLUSHDB")}, &arena);
   REQUIRE(asString(result) == "OK");
-  REQUIRE(asArray(dispatch(store, {bulkStr("KEYS")}, &arena)).empty());
+  REQUIRE(
+    asArray(dispatch(store, {bulkStr("KEYS"), bulkStr("*")}, &arena)).empty());
 }
 
 TEST_CASE("LPUSH and RPUSH commands", "[commands]") {
@@ -233,7 +235,7 @@ TEST_CASE("LPOP and RPOP commands", "[commands]") {
   SECTION("POP from missing key returns nil") {
     auto result =
       dispatch(store, {bulkStr("LPOP"), bulkStr("missing")}, &arena);
-    REQUIRE(asBulk(result) == "(nil)");
+    REQUIRE(isNull(result));
   }
 }
 

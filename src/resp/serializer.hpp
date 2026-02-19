@@ -96,6 +96,19 @@ template <> struct TypeSerializer<BulkString> {
 };
 static_assert(Serializable<BulkString>);
 
+// --- Null ---
+template <> struct TypeSerializer<Null> {
+  static ALWAYS_INLINE std::size_t CalculateSize(const Null &) noexcept {
+    return 5; // $-1\r\n
+  }
+
+  static ALWAYS_INLINE void SerializeTo(std::pmr::string &buffer,
+                                        const Null &) {
+    buffer += "$-1\r\n";
+  }
+};
+static_assert(Serializable<Null>);
+
 // --- Type Variant (dispatches to per-type serializers) ---
 template <> struct TypeSerializer<Type> {
   static ALWAYS_INLINE std::size_t CalculateSize(const Type &value) noexcept {

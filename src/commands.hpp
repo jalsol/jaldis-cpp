@@ -36,10 +36,6 @@ inline resp::Type Ok(std::pmr::memory_resource *arena) {
   return resp::String{std::pmr::string{"OK", arena}};
 }
 
-inline resp::Type Nil(std::pmr::memory_resource *arena) {
-  return resp::BulkString{std::pmr::string{"(nil)", arena}};
-}
-
 inline const std::pmr::string *AsBulkString(const resp::Type &t) {
   const auto *bs = std::get_if<resp::BulkString>(&t);
   return bs ? &bs->value : nullptr;
@@ -75,7 +71,7 @@ inline constexpr auto COMMANDS =
               if (result.error() == Storage::Error::WrongType) {
                 return detail::ErrorWrongType(arena);
               }
-              return detail::Nil(arena);
+              return resp::Null{};
             }
             return resp::BulkString{std::pmr::string{**result, arena}};
           }})
@@ -139,9 +135,10 @@ inline constexpr auto COMMANDS =
     .add({.name = "KEYS",
           .fn = [](CommandArgs args, Storage &store,
                    std::pmr::memory_resource *arena) -> resp::Type {
-            if (!args.empty()) {
+            if (args.size() != 1) {
               return detail::ErrorArgCount("KEYS", arena);
             }
+            // Pattern argument is accepted but we always return all keys
             auto keys = store.Keys();
             std::pmr::vector<resp::Type> result{arena};
             result.reserve(keys.size());
@@ -247,13 +244,13 @@ inline constexpr auto COMMANDS =
               if (result.error() == Storage::Error::WrongType) {
                 return detail::ErrorWrongType(arena);
               }
-              return detail::Nil(arena);
+              return resp::Null{};
             }
 
             auto *list = *result;
             if (count == 1 && args.size() == 1) {
               if (list->empty()) {
-                return detail::Nil(arena);
+                return resp::Null{};
               }
               auto val = std::move(list->front());
               list->pop_front();
@@ -298,13 +295,13 @@ inline constexpr auto COMMANDS =
               if (result.error() == Storage::Error::WrongType) {
                 return detail::ErrorWrongType(arena);
               }
-              return detail::Nil(arena);
+              return resp::Null{};
             }
 
             auto *list = *result;
             if (count == 1 && args.size() == 1) {
               if (list->empty()) {
-                return detail::Nil(arena);
+                return resp::Null{};
               }
               auto val = std::move(list->back());
               list->pop_back();

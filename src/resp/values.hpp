@@ -40,6 +40,8 @@ struct BulkString {
       : value(std::move(v)) {}
 };
 
+struct Null {};
+
 struct Array {
   std::pmr::vector<Type> value;
 
@@ -48,7 +50,7 @@ struct Array {
       : value(std::move(v)) {}
 };
 
-struct Type : std::variant<String, Error, Int, BulkString, Array> {
+struct Type : std::variant<String, Error, Int, BulkString, Null, Array> {
   using variant::variant;
 };
 

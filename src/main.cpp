@@ -6,7 +6,7 @@ int main() {
   Server server;
   Server::Config config{
     .address = "127.0.0.1",
-    .port = 8080,
+    .port = 6379,
   };
 
   std::println("Starting server on {}:{}", config.address, config.port);
