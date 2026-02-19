@@ -41,6 +41,7 @@ private:
   static constexpr std::size_t MAX_EVENTS = 1024;
   static constexpr std::size_t READ_BUFFER_SIZE = 4096;
   static constexpr std::size_t ARENA_SIZE = 8192;
+  static constexpr std::size_t SWEEP_INTERVAL = 1024;
 
   struct ClientState {
     std::array<std::byte, ARENA_SIZE> arena_buf{};
@@ -54,6 +55,7 @@ private:
   std::array<epoll_event, MAX_EVENTS> event_buffer_{};
   std::unordered_map<int, std::unique_ptr<ClientState>> clients_;
   Storage store_;
+  std::size_t commands_since_sweep_ = 0;
 
   void AcceptNewConnections();
   void HandleClientRequest(int client_fd);

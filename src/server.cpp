@@ -157,6 +157,13 @@ void Server::ParseInput(ClientState &client, std::string_view input,
 void Server::ExecuteCommands(std::span<const resp::Type> parsed,
                              std::pmr::vector<resp::Type> &replies,
                              std::pmr::memory_resource *arena) {
+  // Periodic sweep — amortized, runs every SWEEP_INTERVAL command batches
+  commands_since_sweep_ += parsed.size();
+  if (commands_since_sweep_ >= SWEEP_INTERVAL) [[unlikely]] {
+    store_.Sweep();
+    commands_since_sweep_ = 0;
+  }
+
   replies.reserve(parsed.size());
 
   for (const auto &value : parsed) {

@@ -1,10 +1,12 @@
 #pragma once
 
 #include <chrono>
+#include <cstddef>
 #include <deque>
 #include <expected>
 #include <functional>
 #include <optional>
+#include <random>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -56,6 +58,7 @@ private:
 
   std::unordered_map<std::string, Entry, TransparentHash, std::equal_to<>>
     data_;
+  std::minstd_rand rng_{std::random_device{}()};
 
   Entry *FindEntry(std::string_view key);
 };

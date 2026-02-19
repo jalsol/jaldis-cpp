@@ -103,17 +103,27 @@ int Storage::GetTtl(std::string_view key) {
 }
 
 void Storage::Sweep(std::size_t max_checks) {
-  auto now = Clock::now();
-  auto it = data_.begin();
-  std::size_t checked = 0;
+  const auto bucket_count = data_.bucket_count();
+  if (bucket_count == 0) {
+    return;
+  }
 
-  while (it != data_.end() && checked < max_checks) {
-    if (it->second.Expired(now)) {
-      it = data_.erase(it);
-    } else {
-      ++it;
+  auto now = Clock::now();
+  auto checked = 0;
+
+  for (auto attempt = 0; checked < max_checks && attempt < max_checks * 2;
+       ++attempt) {
+    const auto bucket = rng_() % bucket_count;
+    for (auto it = data_.begin(bucket); it != data_.end(bucket); ++it) {
+      if (checked >= max_checks) {
+        break;
+      }
+      if (it->second.Expired(now)) {
+        data_.erase(it->first);
+        break; // bucket iterators invalidated after erase
+      }
+      ++checked;
     }
-    ++checked;
   }
 }
 
