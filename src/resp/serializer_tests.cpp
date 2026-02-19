@@ -1,13 +1,15 @@
 #include "serializer.hpp"
 #include "values.hpp"
 
+#include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <memory_resource>
 
 using namespace resp;
 
 TEST_CASE("Serialize simple string", "[serializer]") {
-  std::pmr::monotonic_buffer_resource arena{1024};
+  std::array<std::byte, 1024> buffer;
+  std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
   Serializer serializer{&arena};
 
   SECTION("Basic string") {
@@ -30,7 +32,8 @@ TEST_CASE("Serialize simple string", "[serializer]") {
 }
 
 TEST_CASE("Serialize error", "[serializer]") {
-  std::pmr::monotonic_buffer_resource arena{1024};
+  std::array<std::byte, 1024> buffer;
+  std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
   Serializer serializer{&arena};
 
   SECTION("Basic error") {
@@ -47,7 +50,8 @@ TEST_CASE("Serialize error", "[serializer]") {
 }
 
 TEST_CASE("Serialize integer", "[serializer]") {
-  std::pmr::monotonic_buffer_resource arena{1024};
+  std::array<std::byte, 1024> buffer;
+  std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
   Serializer serializer{&arena};
 
   SECTION("Positive integer") {
@@ -76,7 +80,8 @@ TEST_CASE("Serialize integer", "[serializer]") {
 }
 
 TEST_CASE("Serialize bulk string", "[serializer]") {
-  std::pmr::monotonic_buffer_resource arena{1024};
+  std::array<std::byte, 1024> buffer;
+  std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
   Serializer serializer{&arena};
 
   SECTION("Basic bulk string") {
@@ -99,7 +104,8 @@ TEST_CASE("Serialize bulk string", "[serializer]") {
 }
 
 TEST_CASE("Serialize array", "[serializer]") {
-  std::pmr::monotonic_buffer_resource arena{4096};
+  std::array<std::byte, 4096> buffer;
+  std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
   Serializer serializer{&arena};
 
   SECTION("Empty array") {
@@ -155,7 +161,8 @@ TEST_CASE("Serialize array", "[serializer]") {
 }
 
 TEST_CASE("Reusable Serializer", "[serializer]") {
-  std::pmr::monotonic_buffer_resource arena{4096};
+  std::array<std::byte, 4096> buffer;
+  std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
   Serializer serializer{&arena};
 
   SECTION("Serialize multiple values") {
@@ -182,7 +189,8 @@ TEST_CASE("Reusable Serializer", "[serializer]") {
 }
 
 TEST_CASE("Size calculation", "[serializer][size]") {
-  std::pmr::monotonic_buffer_resource arena{1024};
+  std::array<std::byte, 1024> buffer;
+  std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
 
   SECTION("String size") {
     String s{std::pmr::string{"OK", &arena}};
