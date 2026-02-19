@@ -8,7 +8,8 @@
 #include <string_view>
 
 using CommandArgs = std::span<const resp::Type>;
-using CommandFn = resp::Type (*)(CommandArgs, Storage &);
+using CommandFn = resp::Type (*)(CommandArgs, Storage &,
+                                 std::pmr::memory_resource *);
 
 struct CommandEntry {
   std::string_view name;
@@ -39,18 +40,18 @@ template <std::size_t N> struct CommandHandler {
     return CommandHandler<N + 1>{next};
   }
 
-  resp::Type Dispatch(std::string_view name, CommandArgs args,
-                      Storage &store) const {
+  resp::Type Dispatch(std::string_view name, CommandArgs args, Storage &store,
+                      std::pmr::memory_resource *arena) const {
     for (const auto &cmd : entries) {
       if (cmd.name == name) {
-        return cmd.fn(args, store);
+        return cmd.fn(args, store, arena);
       }
     }
-    std::pmr::string msg;
+    std::pmr::string msg{arena};
     msg.reserve(22 + name.size());
     msg += "ERR unknown command '";
     msg += name;
     msg += "'";
-    return resp::Type{resp::Error{std::move(msg)}};
+    return resp::Error{std::move(msg)};
   }
 };
