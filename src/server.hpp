@@ -8,11 +8,9 @@
 #include <cstdint>
 #include <memory>
 #include <memory_resource>
-#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
 #include <arpa/inet.h>
 #include <sys/epoll.h>
@@ -62,14 +60,4 @@ private:
   void RegisterToEpoll(int fd);
   void CloseClient(int client_fd);
   static bool WriteAll(int client_fd, std::string_view data);
-
-  // Pipeline phases (split for future multithreading)
-  static void ParseInput(ClientState &client, std::string_view input,
-                         std::pmr::vector<resp::Type> &parsed,
-                         bool &can_release);
-  void ExecuteCommands(std::span<const resp::Type> parsed,
-                       std::pmr::vector<resp::Type> &replies,
-                       std::pmr::memory_resource *arena);
-  static bool SerializeAndFlush(int client_fd, ClientState &client,
-                                std::span<const resp::Type> replies);
 };

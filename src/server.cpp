@@ -82,13 +82,13 @@ void Server::AcceptNewConnections() {
 }
 
 void Server::HandleClientRequest(int client_fd) {
-  std::array<char, READ_BUFFER_SIZE> buffer{};
   auto it = clients_.find(client_fd);
   if (it == clients_.end()) [[unlikely]] {
     CloseClient(client_fd);
     return;
   }
   auto &client = *it->second;
+  std::array<char, READ_BUFFER_SIZE> buffer{};
 
   while (true) {
     const auto bytes_read = read(client_fd, buffer.data(), buffer.size());
@@ -110,97 +110,78 @@ void Server::HandleClientRequest(int client_fd) {
       std::string_view{buffer.data(), static_cast<std::size_t>(bytes_read)};
     bool can_release = true;
 
-    // Phase 1: Parse RESP values (IO-only)
-    std::pmr::vector<resp::Type> parsed{&client.arena};
-    ParseInput(client, input, parsed, can_release);
+    resp::Serializer serializer{&client.arena};
+    std::pmr::string write_buf{&client.arena};
+    std::size_t command_count = 0;
 
-    // Phase 2: Execute commands against storage
-    std::pmr::vector<resp::Type> replies{&client.arena};
-    ExecuteCommands(parsed, replies, &client.arena);
+    while (!input.empty()) {
+      auto result = client.handler.Feed(input);
+      input.remove_prefix(result.consumed);
 
-    // Phase 3: Serialize and write responses (IO-only)
-    if (!SerializeAndFlush(client_fd, client, replies)) [[unlikely]] {
-      CloseClient(client_fd);
-      return;
+      if (result.status == resp::ParseStatus::Cancelled) [[unlikely]] {
+        client.handler.Reset();
+        break;
+      }
+
+      if (result.status == resp::ParseStatus::NeedMore) {
+        can_release = false;
+        break;
+      }
+
+      if (!result.value) [[unlikely]] {
+        client.handler.Reset();
+        continue;
+      }
+
+      // Commands are RESP arrays: ["COMMAND", arg1, arg2, ...]
+      const auto *arr = std::get_if<resp::Array>(&*result.value);
+      if (!arr || arr->value.empty()) [[unlikely]] {
+        auto response = serializer.Serialize(resp::Error{
+          std::pmr::string{"ERR invalid command format", &client.arena}});
+        write_buf.append(response);
+        client.handler.Reset();
+        continue;
+      }
+
+      const auto *name_bs = std::get_if<resp::BulkString>(arr->value.data());
+      if (!name_bs) [[unlikely]] {
+        auto response = serializer.Serialize(resp::Error{std::pmr::string{
+          "ERR command name must be a bulk string", &client.arena}});
+        write_buf.append(response);
+        client.handler.Reset();
+        continue;
+      }
+
+      std::span<const resp::Type> args{arr->value.data() + 1,
+                                       arr->value.size() - 1};
+      auto reply =
+        COMMANDS.Dispatch(name_bs->value, args, store_, &client.arena);
+
+      auto response = serializer.Serialize(reply);
+      write_buf.append(response);
+      ++command_count;
+      client.handler.Reset();
+    }
+
+    // Periodic sweep
+    commands_since_sweep_ += command_count;
+    if (commands_since_sweep_ >= SWEEP_INTERVAL) [[unlikely]] {
+      store_.Sweep();
+      commands_since_sweep_ = 0;
+    }
+
+    // Flush all accumulated responses in a single write
+    if (!write_buf.empty()) {
+      if (!WriteAll(client_fd, write_buf)) [[unlikely]] {
+        CloseClient(client_fd);
+        return;
+      }
     }
 
     if (can_release) {
       client.arena.release();
     }
   }
-}
-
-void Server::ParseInput(ClientState &client, std::string_view input,
-                        std::pmr::vector<resp::Type> &parsed,
-                        bool &can_release) {
-  while (!input.empty()) {
-    auto result = client.handler.Feed(input);
-    input.remove_prefix(result.consumed);
-
-    if (result.status == resp::ParseStatus::Cancelled) [[unlikely]] {
-      client.handler.Reset();
-      break;
-    }
-
-    if (result.status == resp::ParseStatus::NeedMore) {
-      can_release = false;
-      break;
-    }
-
-    if (result.value) {
-      parsed.push_back(std::move(*result.value));
-    }
-    client.handler.Reset();
-  }
-}
-
-void Server::ExecuteCommands(std::span<const resp::Type> parsed,
-                             std::pmr::vector<resp::Type> &replies,
-                             std::pmr::memory_resource *arena) {
-  // Periodic sweep — amortized, runs every SWEEP_INTERVAL command batches
-  commands_since_sweep_ += parsed.size();
-  if (commands_since_sweep_ >= SWEEP_INTERVAL) [[unlikely]] {
-    store_.Sweep();
-    commands_since_sweep_ = 0;
-  }
-
-  replies.reserve(parsed.size());
-
-  for (const auto &value : parsed) {
-    const auto *arr = std::get_if<resp::Array>(&value);
-    if (!arr || arr->value.empty()) [[unlikely]] {
-      replies.emplace_back(
-        resp::Error{std::pmr::string{"ERR invalid command format", arena}});
-      continue;
-    }
-
-    const auto *name_bs = std::get_if<resp::BulkString>(&arr->value[0]);
-    if (!name_bs) [[unlikely]] {
-      replies.emplace_back(resp::Error{
-        std::pmr::string{"ERR command name must be a bulk string", arena}});
-      continue;
-    }
-
-    std::span<const resp::Type> args{arr->value.data() + 1,
-                                     arr->value.size() - 1};
-    replies.push_back(COMMANDS.Dispatch(name_bs->value, args, store_, arena));
-  }
-}
-
-bool Server::SerializeAndFlush(int client_fd, ClientState &client,
-                               std::span<const resp::Type> replies) {
-  if (replies.empty()) {
-    return true;
-  }
-
-  resp::Serializer serializer{&client.arena};
-  std::pmr::string write_buf{&client.arena};
-  for (const auto &reply : replies) {
-    auto response = serializer.Serialize(reply);
-    write_buf.append(response);
-  }
-
-  return WriteAll(client_fd, write_buf);
 }
 
 void Server::CloseClient(int client_fd) {
