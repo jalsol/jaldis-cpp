@@ -2,7 +2,7 @@
 #include "handler.hpp"
 
 #include <charconv>
-#include <memory>
+#include <utility>
 
 namespace resp {
 namespace {
@@ -146,15 +146,42 @@ ArrayParser::ArrayParser(std::pmr::memory_resource *arena)
     : arena_(arena)
     , length_buffer_(arena)
     , elements_(arena)
-    , element_handler_(std::make_unique<RespHandler>(arena)) {
+    , element_handler_(std::pmr::polymorphic_allocator<RespHandler>{arena}
+                         .new_object<RespHandler>(arena)) {
   length_buffer_.reserve(LENGTH_BUFFER_SIZE);
   elements_.reserve(DEFAULT_ARRAY_CAPACITY);
 }
 
-ArrayParser::~ArrayParser() = default;
+ArrayParser::~ArrayParser() {
+  if (element_handler_) {
+    std::pmr::polymorphic_allocator<RespHandler>{arena_}.delete_object(
+      element_handler_);
+  }
+}
 
-ArrayParser::ArrayParser(ArrayParser &&) noexcept = default;
-ArrayParser &ArrayParser::operator=(ArrayParser &&) noexcept = default;
+ArrayParser::ArrayParser(ArrayParser &&other) noexcept
+    : arena_(other.arena_)
+    , length_buffer_(std::move(other.length_buffer_))
+    , elements_(std::move(other.elements_))
+    , element_handler_(std::exchange(other.element_handler_, nullptr))
+    , state_(other.state_)
+    , expected_count_(other.expected_count_) {}
+
+ArrayParser &ArrayParser::operator=(ArrayParser &&other) noexcept {
+  if (this != &other) {
+    if (element_handler_) {
+      std::pmr::polymorphic_allocator<RespHandler>{arena_}.delete_object(
+        element_handler_);
+    }
+    arena_ = other.arena_;
+    length_buffer_ = std::move(other.length_buffer_);
+    elements_ = std::move(other.elements_);
+    element_handler_ = std::exchange(other.element_handler_, nullptr);
+    state_ = other.state_;
+    expected_count_ = other.expected_count_;
+  }
+  return *this;
+}
 
 ParseResult ArrayParser::Feed(std::string_view input) {
   std::size_t consumed = 0;

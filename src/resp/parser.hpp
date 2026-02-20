@@ -4,7 +4,6 @@
 
 #include <concepts>
 #include <cstddef>
-#include <memory>
 #include <memory_resource>
 #include <optional>
 #include <string_view>
@@ -132,7 +131,6 @@ public:
   ArrayParser &operator=(const ArrayParser &) = delete;
   ArrayParser(ArrayParser &&) noexcept;
   ArrayParser &operator=(ArrayParser &&) noexcept;
-
   ParseResult Feed(std::string_view input);
 
 private:
@@ -141,7 +139,7 @@ private:
   std::pmr::memory_resource *arena_;
   std::pmr::string length_buffer_{arena_};
   std::pmr::vector<Type> elements_{arena_};
-  std::unique_ptr<RespHandler> element_handler_;
+  RespHandler *element_handler_ = nullptr; // arena-allocated, no heap
   State state_ = State::ReadingLength;
   int expected_count_ = -1;
 };
