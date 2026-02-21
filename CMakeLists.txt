@@ -45,3 +45,8 @@ add_executable(command_tests
 target_link_libraries(resp_tests PRIVATE Catch2::Catch2WithMain)
 target_link_libraries(storage_tests PRIVATE Catch2::Catch2WithMain)
 target_link_libraries(command_tests PRIVATE Catch2::Catch2WithMain)
+
+enable_testing()
+add_test(NAME resp_tests COMMAND resp_tests)
+add_test(NAME storage_tests COMMAND storage_tests)
+add_test(NAME command_tests COMMAND command_tests)
