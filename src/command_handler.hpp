@@ -3,6 +3,7 @@
 #include "resp/values.hpp"
 #include "storage.hpp"
 
+#include <algorithm>
 #include <array>
 #include <span>
 #include <string_view>
@@ -20,22 +21,19 @@ template <std::size_t N> struct CommandHandler {
   std::array<CommandEntry, N> entries{};
 
   constexpr auto add(CommandEntry e) const {
-    for (char c : e.name) {
-      if (c < 'A' || c > 'Z') {
-        throw "command names must be uppercase ASCII";
-      }
+    if (std::ranges::any_of(e.name,
+                            [](char c) { return c < 'A' || c > 'Z'; })) {
+      throw "command names must be uppercase ASCII";
     }
 
-    for (const auto &existing : entries) {
-      if (existing.name == e.name) {
-        throw "duplicate command name";
-      }
+    if (std::ranges::any_of(entries, [&](const auto &existing) {
+          return existing.name == e.name;
+        })) {
+      throw "duplicate command name";
     }
 
     std::array<CommandEntry, N + 1> next{};
-    for (std::size_t i = 0; i < N; i++) {
-      next[i] = entries[i];
-    }
+    std::ranges::copy(entries, next.begin());
     next[N] = e;
     return CommandHandler<N + 1>{next};
   }
