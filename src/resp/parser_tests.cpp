@@ -7,49 +7,6 @@
 
 using namespace resp;
 
-TEST_CASE("TypeDispatcher recognizes valid type characters",
-          "[parser][typedispatcher]") {
-  std::array<std::byte, 1024> buffer;
-  std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
-
-  TypeDispatcher dispatcher{&arena};
-
-  SECTION("String type") {
-    auto result = dispatcher.Feed("+OK\r\n");
-    REQUIRE(result.status == ParseStatus::Done);
-  }
-
-  SECTION("Error type") {
-    auto result = dispatcher.Feed("-ERR\r\n");
-    REQUIRE(result.status == ParseStatus::Done);
-  }
-
-  SECTION("Integer type") {
-    auto result = dispatcher.Feed(":42\r\n");
-    REQUIRE(result.status == ParseStatus::Done);
-  }
-
-  SECTION("Bulk string type") {
-    auto result = dispatcher.Feed("$5\r\nhello\r\n");
-    REQUIRE(result.status == ParseStatus::Done);
-  }
-
-  SECTION("Array type") {
-    auto result = dispatcher.Feed("*2\r\n");
-    REQUIRE(result.status == ParseStatus::Done);
-  }
-
-  SECTION("Invalid type") {
-    auto result = dispatcher.Feed("X");
-    REQUIRE(result.status == ParseStatus::Cancelled);
-  }
-
-  SECTION("Empty input") {
-    auto result = dispatcher.Feed("");
-    REQUIRE(result.status == ParseStatus::NeedMore);
-  }
-}
-
 TEST_CASE("IntParser parses integers", "[parser][int]") {
   std::array<std::byte, 1024> buffer;
   std::pmr::monotonic_buffer_resource arena{buffer.data(), buffer.size()};
@@ -58,7 +15,7 @@ TEST_CASE("IntParser parses integers", "[parser][int]") {
     IntParser parser{&arena};
     auto result = parser.Feed("42\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(result.consumed == 4);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<Int>(*result.value));
@@ -69,7 +26,7 @@ TEST_CASE("IntParser parses integers", "[parser][int]") {
     IntParser parser{&arena};
     auto result = parser.Feed("-100\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(result.consumed == 6);
     REQUIRE(std::get<Int>(*result.value).value == -100);
   }
@@ -78,7 +35,7 @@ TEST_CASE("IntParser parses integers", "[parser][int]") {
     IntParser parser{&arena};
     auto result = parser.Feed("0\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(std::get<Int>(*result.value).value == 0);
   }
 
@@ -86,8 +43,8 @@ TEST_CASE("IntParser parses integers", "[parser][int]") {
     IntParser parser{&arena};
     auto result = parser.Feed("42");
 
-    REQUIRE(result.status == ParseStatus::NeedMore);
     REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 }
 
@@ -99,7 +56,7 @@ TEST_CASE("StringParser parses simple strings", "[parser][string]") {
     StringParser parser{&arena};
     auto result = parser.Feed("OK\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(result.consumed == 4);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<String>(*result.value));
@@ -110,7 +67,7 @@ TEST_CASE("StringParser parses simple strings", "[parser][string]") {
     StringParser parser{&arena};
     auto result = parser.Feed("Hello World\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(std::get<String>(*result.value).value == "Hello World");
   }
 
@@ -118,7 +75,7 @@ TEST_CASE("StringParser parses simple strings", "[parser][string]") {
     StringParser parser{&arena};
     auto result = parser.Feed("\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(std::get<String>(*result.value).value == "");
   }
 
@@ -126,7 +83,8 @@ TEST_CASE("StringParser parses simple strings", "[parser][string]") {
     StringParser parser{&arena};
     auto result = parser.Feed("OK");
 
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 }
 
@@ -138,7 +96,6 @@ TEST_CASE("ErrorParser parses error strings", "[parser][error]") {
     ErrorParser parser{&arena};
     auto result = parser.Feed("ERR\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<Error>(*result.value));
     REQUIRE(std::get<Error>(*result.value).value == "ERR");
@@ -148,7 +105,7 @@ TEST_CASE("ErrorParser parses error strings", "[parser][error]") {
     ErrorParser parser{&arena};
     auto result = parser.Feed("ERR unknown command\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(std::get<Error>(*result.value).value == "ERR unknown command");
   }
 }
@@ -161,7 +118,7 @@ TEST_CASE("BulkStringParser parses bulk strings", "[parser][bulkstring]") {
     BulkStringParser parser{&arena};
     auto result = parser.Feed("5\r\nhello\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(result.consumed == 10);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<BulkString>(*result.value));
@@ -172,7 +129,7 @@ TEST_CASE("BulkStringParser parses bulk strings", "[parser][bulkstring]") {
     BulkStringParser parser{&arena};
     auto result = parser.Feed("0\r\n\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(std::get<BulkString>(*result.value).value == "");
   }
 
@@ -180,7 +137,7 @@ TEST_CASE("BulkStringParser parses bulk strings", "[parser][bulkstring]") {
     BulkStringParser parser{&arena};
     auto result = parser.Feed("12\r\nhello\r\nworld\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(std::get<BulkString>(*result.value).value == "hello\r\nworld");
   }
 
@@ -188,14 +145,16 @@ TEST_CASE("BulkStringParser parses bulk strings", "[parser][bulkstring]") {
     BulkStringParser parser{&arena};
     auto result = parser.Feed("5");
 
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 
   SECTION("Partial data") {
     BulkStringParser parser{&arena};
     auto result = parser.Feed("5\r\nhel");
 
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 }
 
@@ -207,7 +166,6 @@ TEST_CASE("ArrayParser parses arrays", "[parser][array]") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("0\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<Array>(*result.value));
     REQUIRE(std::get<Array>(*result.value).value.empty());
@@ -217,7 +175,6 @@ TEST_CASE("ArrayParser parses arrays", "[parser][array]") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("1\r\n:42\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     auto &arr = std::get<Array>(*result.value).value;
     REQUIRE(arr.size() == 1);
@@ -229,7 +186,7 @@ TEST_CASE("ArrayParser parses arrays", "[parser][array]") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("1\r\n+OK\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     auto &arr = std::get<Array>(*result.value).value;
     REQUIRE(arr.size() == 1);
     REQUIRE(std::holds_alternative<String>(arr[0]));
@@ -240,7 +197,7 @@ TEST_CASE("ArrayParser parses arrays", "[parser][array]") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("3\r\n:1\r\n:2\r\n:3\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     auto &arr = std::get<Array>(*result.value).value;
     REQUIRE(arr.size() == 3);
     REQUIRE(std::get<Int>(arr[0]).value == 1);
@@ -252,7 +209,7 @@ TEST_CASE("ArrayParser parses arrays", "[parser][array]") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("3\r\n+hello\r\n:123\r\n-ERR\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     auto &arr = std::get<Array>(*result.value).value;
     REQUIRE(arr.size() == 3);
     REQUIRE(std::holds_alternative<String>(arr[0]));
@@ -267,7 +224,7 @@ TEST_CASE("ArrayParser parses arrays", "[parser][array]") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("2\r\n$5\r\nhello\r\n$5\r\nworld\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     auto &arr = std::get<Array>(*result.value).value;
     REQUIRE(arr.size() == 2);
     REQUIRE(std::get<BulkString>(arr[0]).value == "hello");
@@ -278,7 +235,7 @@ TEST_CASE("ArrayParser parses arrays", "[parser][array]") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("2\r\n:1\r\n*2\r\n:2\r\n:3\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     auto &arr = std::get<Array>(*result.value).value;
     REQUIRE(arr.size() == 2);
     REQUIRE(std::holds_alternative<Int>(arr[0]));
@@ -295,27 +252,31 @@ TEST_CASE("ArrayParser parses arrays", "[parser][array]") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("3");
 
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 
   SECTION("Partial array data") {
     ArrayParser parser{&arena};
     auto result = parser.Feed("2\r\n:1\r\n");
 
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 
   SECTION("Multi-call array parsing with type bytes") {
     ArrayParser parser{&arena};
 
     auto result1 = parser.Feed("2\r\n");
-    REQUIRE(result1.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result1.value.has_value());
+    REQUIRE(result1.value.error() == ParseStatus::NeedMore);
 
     auto result2 = parser.Feed("+hello\r\n");
-    REQUIRE(result2.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result2.value.has_value());
+    REQUIRE(result2.value.error() == ParseStatus::NeedMore);
 
     auto result3 = parser.Feed(":42\r\n");
-    REQUIRE(result3.status == ParseStatus::Done);
+    REQUIRE(result3.value.has_value());
 
     auto &arr = std::get<Array>(*result3.value).value;
     REQUIRE(arr.size() == 2);

@@ -118,19 +118,13 @@ void Server::HandleClientRequest(int client_fd) {
       auto result = client.handler.Feed(input);
       input.remove_prefix(result.consumed);
 
-      if (result.status == resp::ParseStatus::Cancelled) [[unlikely]] {
-        client.handler.Reset();
+      if (!result.value.has_value()) {
+        if (result.value.error() == resp::ParseStatus::Cancelled) [[unlikely]] {
+          client.handler.Reset();
+        } else {
+          can_release = false;
+        }
         break;
-      }
-
-      if (result.status == resp::ParseStatus::NeedMore) {
-        can_release = false;
-        break;
-      }
-
-      if (!result.value) [[unlikely]] {
-        client.handler.Reset();
-        continue;
       }
 
       // Commands are RESP arrays: ["COMMAND", arg1, arg2, ...]

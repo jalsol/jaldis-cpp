@@ -15,7 +15,6 @@ TEST_CASE("RespHandler switches parsers correctly", "[handler]") {
     RespHandler handler{&arena};
     auto result = handler.Feed("+OK\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<String>(*result.value));
     REQUIRE(std::get<String>(*result.value).value == "OK");
@@ -25,7 +24,6 @@ TEST_CASE("RespHandler switches parsers correctly", "[handler]") {
     RespHandler handler{&arena};
     auto result = handler.Feed(":42\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<Int>(*result.value));
     REQUIRE(std::get<Int>(*result.value).value == 42);
@@ -35,7 +33,6 @@ TEST_CASE("RespHandler switches parsers correctly", "[handler]") {
     RespHandler handler{&arena};
     auto result = handler.Feed("-ERR something\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<Error>(*result.value));
     REQUIRE(std::get<Error>(*result.value).value == "ERR something");
@@ -45,7 +42,6 @@ TEST_CASE("RespHandler switches parsers correctly", "[handler]") {
     RespHandler handler{&arena};
     auto result = handler.Feed("$5\r\nhello\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<BulkString>(*result.value));
     REQUIRE(std::get<BulkString>(*result.value).value == "hello");
@@ -55,7 +51,6 @@ TEST_CASE("RespHandler switches parsers correctly", "[handler]") {
     RespHandler handler{&arena};
     auto result = handler.Feed("*0\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<Array>(*result.value));
     REQUIRE(std::get<Array>(*result.value).value.empty());
@@ -65,7 +60,6 @@ TEST_CASE("RespHandler switches parsers correctly", "[handler]") {
     RespHandler handler{&arena};
     auto result = handler.Feed("*2\r\n+hello\r\n:42\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
     REQUIRE(result.value.has_value());
     REQUIRE(std::holds_alternative<Array>(*result.value));
     auto &arr = std::get<Array>(*result.value).value;
@@ -78,7 +72,7 @@ TEST_CASE("RespHandler switches parsers correctly", "[handler]") {
     RespHandler handler{&arena};
     auto result = handler.Feed("*1\r\n*1\r\n:99\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     auto &arr = std::get<Array>(*result.value).value;
     REQUIRE(arr.size() == 1);
     REQUIRE(std::holds_alternative<Array>(arr[0]));
@@ -96,29 +90,32 @@ TEST_CASE("RespHandler handles partial data", "[handler]") {
     RespHandler handler{&arena};
 
     auto result1 = handler.Feed("+OK");
-    REQUIRE(result1.status == ParseStatus::NeedMore);
     REQUIRE_FALSE(result1.value.has_value());
+    REQUIRE(result1.value.error() == ParseStatus::NeedMore);
   }
 
   SECTION("Integer without CRLF") {
     RespHandler handler{&arena};
 
     auto result = handler.Feed(":42");
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 
   SECTION("Bulk string partial length") {
     RespHandler handler{&arena};
 
     auto result = handler.Feed("$5");
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 
   SECTION("Bulk string partial data") {
     RespHandler handler{&arena};
 
     auto result = handler.Feed("$5\r\nhel");
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 }
 
@@ -130,12 +127,12 @@ TEST_CASE("RespHandler reset functionality", "[handler]") {
     RespHandler handler{&arena};
 
     auto result1 = handler.Feed("+OK\r\n");
-    REQUIRE(result1.status == ParseStatus::Done);
+    REQUIRE(result1.value.has_value());
 
     handler.Reset();
 
     auto result2 = handler.Feed(":42\r\n");
-    REQUIRE(result2.status == ParseStatus::Done);
+    REQUIRE(result2.value.has_value());
     REQUIRE(std::holds_alternative<Int>(*result2.value));
   }
 
@@ -143,12 +140,13 @@ TEST_CASE("RespHandler reset functionality", "[handler]") {
     RespHandler handler{&arena};
 
     auto result1 = handler.Feed("+OK");
-    REQUIRE(result1.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result1.value.has_value());
+    REQUIRE(result1.value.error() == ParseStatus::NeedMore);
 
     handler.Reset();
 
     auto result2 = handler.Feed(":100\r\n");
-    REQUIRE(result2.status == ParseStatus::Done);
+    REQUIRE(result2.value.has_value());
     REQUIRE(std::holds_alternative<Int>(*result2.value));
   }
 }
@@ -158,7 +156,7 @@ TEST_CASE("RespHandler with different arena allocators", "[handler][arena]") {
     RespHandler handler{};
     auto result = handler.Feed("+OK\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(std::get<String>(*result.value).value == "OK");
   }
 
@@ -169,7 +167,7 @@ TEST_CASE("RespHandler with different arena allocators", "[handler][arena]") {
     RespHandler handler{&arena};
     auto result = handler.Feed("$5\r\nhello\r\n");
 
-    REQUIRE(result.status == ParseStatus::Done);
+    REQUIRE(result.value.has_value());
     REQUIRE(std::get<BulkString>(*result.value).value == "hello");
   }
 }
@@ -182,13 +180,15 @@ TEST_CASE("RespHandler handles invalid input", "[handler][error]") {
     RespHandler handler{&arena};
     auto result = handler.Feed("X");
 
-    REQUIRE(result.status == ParseStatus::Cancelled);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::Cancelled);
   }
 
   SECTION("Empty input") {
     RespHandler handler{&arena};
     auto result = handler.Feed("");
 
-    REQUIRE(result.status == ParseStatus::NeedMore);
+    REQUIRE_FALSE(result.value.has_value());
+    REQUIRE(result.value.error() == ParseStatus::NeedMore);
   }
 }

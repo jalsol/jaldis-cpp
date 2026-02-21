@@ -4,8 +4,8 @@
 
 #include <concepts>
 #include <cstddef>
+#include <expected>
 #include <memory_resource>
-#include <optional>
 #include <string_view>
 
 namespace resp {
@@ -14,14 +14,12 @@ class RespHandler; // Forward declaration
 
 enum class ParseStatus : std::uint8_t {
   NeedMore,
-  Done,
   Cancelled,
 };
 
 struct ParseResult {
-  ParseStatus status{};
   std::size_t consumed{};
-  std::optional<Type> value;
+  std::expected<Type, ParseStatus> value;
 };
 
 // Buffer size constants
@@ -36,17 +34,6 @@ concept Parser = requires(ParserType parser, std::string_view input) {
   { parser.Feed(input) } -> std::same_as<ParseResult>;
   requires std::is_move_constructible_v<ParserType>;
   requires std::is_move_assignable_v<ParserType>;
-};
-
-class TypeDispatcher {
-public:
-  explicit TypeDispatcher(std::pmr::memory_resource *arena) noexcept
-      : arena_(arena) {}
-
-  static ParseResult Feed(std::string_view input) noexcept;
-
-private:
-  std::pmr::memory_resource *arena_;
 };
 
 class IntParser {
@@ -76,17 +63,14 @@ public:
     const auto crlf_pos = input.find("\r\n");
     if (crlf_pos == std::string_view::npos) {
       buffer_.append(input);
-      return {.status = ParseStatus::NeedMore,
-              .consumed = input.size(),
-              .value = std::nullopt};
+      return {.consumed = input.size(),
+              .value = std::unexpected(ParseStatus::NeedMore)};
     }
 
     buffer_.append(input.substr(0, crlf_pos));
     const std::size_t consumed = crlf_pos + 2;
 
-    return {.status = ParseStatus::Done,
-            .consumed = consumed,
-            .value = Type{ValueType{std::move(buffer_)}}};
+    return {.consumed = consumed, .value = Type{ValueType{std::move(buffer_)}}};
   }
 
 private:

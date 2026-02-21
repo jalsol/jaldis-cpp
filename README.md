@@ -2,7 +2,7 @@
 
 *Didn't spend a penny on EngineerPro's course (again). Worshipped the almighty footgun 🔫 instead.*
 
-**jaldis** is a high-performance, Redis-compatible key-value store reimplemented in modern C++26. It is a spiritual successor to the original [OCaml implementation](https://github.com/jalsol/jaldis), designed to explore lower-level performance characteristics and manual memory management strategies that were abstracted away in the functional version.
+**jaldis** is a high-performance, Redis-compatible key-value store reimplemented in modern C++26. It is a spiritual successor to my own original [OCaml implementation](https://github.com/jalsol/jaldis), designed to explore lower-level performance characteristics and manual memory management strategies that were abstracted away in the functional version.
 
 While the OCaml version focused on expressiveness and type safety, this C++ port leverages Linux-native asynchronous I/O (`epoll`) and custom memory allocators (`std::pmr`) to provide predictable latency and reduced runtime overhead.
 
@@ -30,15 +30,15 @@ redis-benchmark -h 127.0.0.1 -n 1000000 -c 100 -t set,get -P 16 --csv
 #### Standard Mode (`-P 1`)
 ```
 "test","rps","avg_latency_ms","min_latency_ms","p50_latency_ms","p95_latency_ms","p99_latency_ms","max_latency_ms"
-"SET","187687.69","0.272","0.080","0.271","0.303","0.423","1.383"
-"GET","186011.91","0.275","0.072","0.271","0.311","0.423","3.031"
+"SET","191570.89","0.265","0.064","0.263","0.303","0.375","1.583"
+"GET","188040.62","0.270","0.080","0.271","0.311","0.367","1.343"
 ```
 
 #### Pipelined Mode (`-P 16`)
 ```
 "test","rps","avg_latency_ms","min_latency_ms","p50_latency_ms","p95_latency_ms","p99_latency_ms","max_latency_ms"
-"SET","1792114.62","0.869","0.008","0.887","0.943","1.047","1.223"
-"GET","1686340.62","0.929","0.008","0.807","1.415","2.103","29.775"
+"SET","2024291.50","0.784","0.024","0.783","0.847","0.911","2.095"
+"GET","2096436.12","0.753","0.016","0.751","0.799","1.415","2.367"
 ```
 
 ## Features
